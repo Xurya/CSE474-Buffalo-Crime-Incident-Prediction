@@ -22,7 +22,7 @@ def main():
         sort = sorted(reader, key=lambda row: sort_by_date(row[2]))
 
     # Writes to a single, sorted file. Previously tested and now commented out for reference
-    #   generate_crime_incident_sort(sort)
+    generate_crime_incident_sort(sort)
 
     partitions = list(partition(sort, 100))
     partition_writer(partitions)
@@ -63,6 +63,7 @@ def generate_crime_incident_sort(sort):
 
 # handler for model generation
 def model_generator():
+    # Milestone 2: temporary
     # obtain current file
     data = pd.read_csv("Crime_Incidents_Sorted" + str(current_file_count) + ".csv", names=colnames)
     lat = data.latitude.tolist()
@@ -92,8 +93,8 @@ def partition(l, n):
 
 
 def sort_by_date(date):
-    if date == "":
-        return datetime.now()
+    if isinstance(date, float) or date == '':
+        date = "01/17/2020 02:00:00 PM"
     return datetime.strptime(date, "%m/%d/%Y %I:%M:%S %p")
 
 
