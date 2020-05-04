@@ -9,8 +9,7 @@ import statsmodels.formula.api as stats
 # Milestone 3
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LinearRegression
-from sklearn.model_selection import cross_val_score
-from sklearn.model_selection import RepeatedKFold
+from sklearn.model_selection import KFold
 
 
 current_file_count = 0
@@ -38,30 +37,37 @@ def main():
     model_generator()
 
 
-def visualize(data_frame, surface1, surface2, surface3):
+def visualize(data_frame, surface1, surface2, surface3, title):
     # https://matplotlib.org/mpl_toolkits/mplot3d/tutorial.html
     fig = plt.figure()
-    ax = Axes3D(fig)
+    ax = fig.add_subplot(1, 1, 1, projection='3d')
+    ax.set_title(title)
     ax.scatter(data_frame['Longitude'], data_frame['Latitude'], data_frame['Date'], c='red', marker='o', alpha=0.5)
     ax.plot_surface(surface1, surface2, surface3.reshape(surface1.shape), color='b', alpha=0.3)
     ax.set_xlabel('Longitude')
     ax.set_ylabel('Latitude')
     ax.set_zlabel('Date')
-    plt.show()
 
 
-def vis(x, prediction):
-    data = np.asarray(prediction)
-    Z = np.asarray(x)
+def vis(X_test, y_test, prediction, title):
+    data = np.asarray(y_test)
+    Z = np.asarray(X_test)
     X = data[:, 0]
     Y = data[:, 1]
     fig = plt.figure()
-    ax = Axes3D(fig)
-    ax.scatter(X, Y, Z, c='red', marker='o', alpha=0.5)
-    ax.set_xlabel('Longitude')
-    ax.set_ylabel('Latitude')
-    ax.set_zlabel('Date')
-    plt.show()
+    ax = fig.add_subplot(1, 1, 1, projection='3d')
+    ax.set_title(title)
+    ax.scatter(Z, X, Y, c='red', marker='o', alpha=0.5)
+    yt = np.asarray(prediction)
+    x = yt[:, 0]
+    y = yt[:, 1]
+    # ax.plot(x.flatten(), y.flatten(), Z.flatten(),  c="blue", linewidth=2)
+    ax.plot(Z.flatten(), x.flatten(), y.flatten(), c="blue", linewidth=2)
+    ax.set_ylim(bottom=35)
+    ax.set_zlim(top=-60)
+    ax.set_ylabel('Longitude')
+    ax.set_zlabel('Latitude')
+    ax.set_xlabel('Date')
 
 
 # Writes multiple csv files by partitioning the sorted crime incidents by date
@@ -87,7 +93,11 @@ def generate_crime_incident_sort(sort):
 def model_generator():
     # Milestone 2: temporary
     # obtain current file
-    # data = pd.read_csv("Crime_Incidents_Sorted" + str(current_file_count) + ".csv", names=colnames)
+    mil2 = pd.read_csv("Crime_Incidents_Sorted" + str(current_file_count) + ".csv", names=colnames)
+    m2lat = mil2.latitude.tolist()
+    m2long = mil2.longitude.tolist()
+    m2pos = list(zip(m2lat, m2long))
+    m2date = list(map(lambda x: time_convert(sort_by_date(x)), mil2.incident_datetime.tolist()))
 
     # Milestone 3: Failed model
     data = pd.read_csv("Crime_Incidents_Sorted.csv", names=colnames)
@@ -117,13 +127,19 @@ def model_generator():
     # print(y_test.shape)
 
     # Milestone 2:
-    # regression_milestone_2(pos, date)
+    regression_milestone_2(m2pos, m2date)
 
     # Failed Milestone 3:
-    # regression(X_train, X_test, y_train, y_test)
+    regression(X_train, X_test, y_train, y_test)
 
-    # Multi Output Regression
+    # Milestone 3: Multi Output Regression Hold-out validation
     multi_output_regression(X_train, X_test, y_train, y_test)
+
+    # Milestone 3: Multi Output Regression K-Fold cross validation
+    k_fold_multi_output_regression(date, pos)
+
+    # Show all figures
+    plt.show()
 
 
 def generate_graph(data_frame, inp):
@@ -151,7 +167,7 @@ def sort_by_date(date):
     return datetime.strptime(date, "%m/%d/%Y %I:%M:%S %p")
 
 
-# De-comment markers for milestone 2 testing. Might need to check version control.
+# Milestone 2 ols model
 def regression_milestone_2(pos, date):
     data_frame = pd.DataFrame(pos, columns=['Longitude', 'Latitude'])
     data_frame['Date'] = pd.Series(date)
@@ -162,7 +178,7 @@ def regression_milestone_2(pos, date):
 
     surfacex, surfacey, processed = generate_graph(data_frame, preprocessed)
 
-    visualize(data_frame, surfacex, surfacey, processed)
+    visualize(data_frame, surfacex, surfacey, processed, "Milestone 2: OLS")
 
 
 # Milestone 3 - Failed model
@@ -188,7 +204,7 @@ def regression(X_train, X_test, y_train, y_test):
 
     surfacex, surfacey, processed = generate_graph(data_frame, preprocessed)
 
-    visualize(data_frame, surfacex, surfacey, processed)
+    visualize(data_frame, surfacex, surfacey, processed, "Milestone 3: OLS")
 
 
 # Milestone 3
@@ -205,20 +221,31 @@ def multi_output_regression(X_train, X_test, y_train, y_test):
     # Since the output dimension is clarified
     print("Sample output: ", predictions[0])
 
-    # Visualizes predictions
-    vis(X_test, predictions)
-
     # Terrible accuracy
     print(model.score(X_test, y_test))
+
+    # Visualizes model
+    vis(X_test, y_test, predictions, "Milestone 3: Multi-Output Regression w/ Hold-out Validation")
+    # plt.show()
 
 
 # Milestone 3
 # Attempting multiple output regression with k-fold cross validation
 def k_fold_multi_output_regression(X, y):
+    X = np.asarray(X)
+    y = np.asarray(y)
     lr = LinearRegression()
     X = np.reshape(X, (-1, 1))
-
-    model = lr.fit(X, y)
+    kf = KFold(n_splits=4)
+    i = 1
+    for train_index, test_index in kf.split(X):
+        X_train, X_test = X[train_index], X[test_index]
+        y_train, y_test = y[train_index], y[test_index]
+        model = lr.fit(X_train, y_train)
+        print(model.score(X_test, y_test))
+        predictions = lr.predict(X_test)
+        vis(X_test, y_test, predictions, "Milestone 3: Multi-Output Regression w/ K-Fold Cross Validation, Split " + str(i))
+        i = i+1
 
 
 if __name__ == "__main__":
