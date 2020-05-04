@@ -6,8 +6,15 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 import statsmodels.formula.api as stats
 
+# Milestone 3
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LinearRegression
+from sklearn.model_selection import cross_val_score
+from sklearn.model_selection import RepeatedKFold
+
+
 current_file_count = 0
-# validation_file_iter = 0
+# validation_file = -1
 colnames = ["incident_id", "case_number", "incident_datetime", "incident_type_primary", "incident_description",
             "clearance_type", "address_1", "address_2", "city", "state", "zip", "country", "latitude", "longitude",
             "created_at", "updated_at", "location", "hour_of_day", "day_of_week", "parent_incident_type",
@@ -21,9 +28,10 @@ def main():
         reader = csv.reader(f)
         sort = sorted(reader, key=lambda row: sort_by_date(row[2]))
 
-    # Writes to a single, sorted file. Previously tested and now commented out for reference
+    # Writes to a single, sorted file.
     generate_crime_incident_sort(sort)
 
+    # Partitions, Milestone 2
     partitions = list(partition(sort, 100))
     partition_writer(partitions)
 
@@ -36,6 +44,20 @@ def visualize(data_frame, surface1, surface2, surface3):
     ax = Axes3D(fig)
     ax.scatter(data_frame['Longitude'], data_frame['Latitude'], data_frame['Date'], c='red', marker='o', alpha=0.5)
     ax.plot_surface(surface1, surface2, surface3.reshape(surface1.shape), color='b', alpha=0.3)
+    ax.set_xlabel('Longitude')
+    ax.set_ylabel('Latitude')
+    ax.set_zlabel('Date')
+    plt.show()
+
+
+def vis(x, prediction):
+    data = np.asarray(prediction)
+    Z = np.asarray(x)
+    X = data[:, 0]
+    Y = data[:, 1]
+    fig = plt.figure()
+    ax = Axes3D(fig)
+    ax.scatter(X, Y, Z, c='red', marker='o', alpha=0.5)
     ax.set_xlabel('Longitude')
     ax.set_ylabel('Latitude')
     ax.set_zlabel('Date')
@@ -65,21 +87,52 @@ def generate_crime_incident_sort(sort):
 def model_generator():
     # Milestone 2: temporary
     # obtain current file
-    data = pd.read_csv("Crime_Incidents_Sorted" + str(current_file_count) + ".csv", names=colnames)
+    # data = pd.read_csv("Crime_Incidents_Sorted" + str(current_file_count) + ".csv", names=colnames)
+
+    # Milestone 3: Failed model
+    data = pd.read_csv("Crime_Incidents_Sorted.csv", names=colnames)
+
+    # Split data again into training and validastion
     lat = data.latitude.tolist()
     long = data.longitude.tolist()
     pos = list(zip(lat, long))
     date = list(map(lambda x: time_convert(sort_by_date(x)), data.incident_datetime.tolist()))
-    print(date)
 
-    regression(pos, date)
+    # hold out validation
+    X_train, X_test, y_train, y_test = train_test_split(date, pos, test_size=0.2)
+
+    print("X_train: ")
+    print(X_train)
+    print("X_test: ")
+    print(X_test)
+
+    print("y_train: ")
+    print(y_train)
+    print("y_test: ")
+    print(y_test)
+
+    # print(X_train.shape)
+    # print(y_train.shape)
+    # print(X_test.shape)
+    # print(y_test.shape)
+
+    # Milestone 2:
+    # regression_milestone_2(pos, date)
+
+    # Failed Milestone 3:
+    # regression(X_train, X_test, y_train, y_test)
+
+    # Multi Output Regression
+    multi_output_regression(X_train, X_test, y_train, y_test)
 
 
-def generate_graph(data_frame, input):
+def generate_graph(data_frame, inp):
     surfacex, surfacey = np.meshgrid(np.linspace(data_frame.Longitude.min(), data_frame.Longitude.max(), 100),
                                      np.linspace(data_frame.Latitude.min(), data_frame.Latitude.max(), 100))
     temp_frame = pd.DataFrame({'Longitude': surfacex.ravel(), 'Latitude': surfacey.ravel()})
-    post = np.array(input.predict(exog=temp_frame))
+    post = np.array(inp.predict(exog=temp_frame))
+    print("POST:")
+    print(post)
     return surfacex, surfacey, post
 
 
@@ -98,16 +151,74 @@ def sort_by_date(date):
     return datetime.strptime(date, "%m/%d/%Y %I:%M:%S %p")
 
 
-def regression(pos, date):
+# De-comment markers for milestone 2 testing. Might need to check version control.
+def regression_milestone_2(pos, date):
     data_frame = pd.DataFrame(pos, columns=['Longitude', 'Latitude'])
     data_frame['Date'] = pd.Series(date)
 
     model = stats.ols(formula='Date ~ Longitude + Latitude', data=data_frame)
+
     preprocessed = model.fit()
 
     surfacex, surfacey, processed = generate_graph(data_frame, preprocessed)
 
     visualize(data_frame, surfacex, surfacey, processed)
+
+
+# Milestone 3 - Failed model
+# Continuation of using stats models ols from Milestone 2
+# Hold out validation, since it is an easier implementation, showing the major concern with the
+# data set and chosen training model.
+def regression(X_train, X_test, y_train, y_test):
+    data_frame = pd.DataFrame(y_train, columns=['Longitude', 'Latitude'])
+    data_frame['Date'] = pd.Series(X_train)
+
+    # Generate testing data frame
+    data_frame_pre = pd.DataFrame(y_test, columns=['Longitude', 'Latitude'])
+    data_frame_pre['Date'] = pd.Series(X_test)
+
+    model = stats.ols(formula='Date ~ Longitude + Latitude', data=data_frame)
+
+    preprocessed = model.fit()
+    print(preprocessed.summary())
+
+    predictions = preprocessed.predict(data_frame_pre)
+    
+    print(predictions)
+
+    surfacex, surfacey, processed = generate_graph(data_frame, preprocessed)
+
+    visualize(data_frame, surfacex, surfacey, processed)
+
+
+# Milestone 3
+# Attempting multiple output regression with hold-out validation
+def multi_output_regression(X_train, X_test, y_train, y_test):
+    lr = LinearRegression()
+    X_train = np.reshape(X_train, (-1, 1))
+    X_test = np.reshape(X_test, (-1,1))
+
+    model = lr.fit(X_train, y_train)
+    predictions = lr.predict(X_test)
+
+    # Notice how the output is in the right dimensions now
+    # Since the output dimension is clarified
+    print("Sample output: ", predictions[0])
+
+    # Visualizes predictions
+    vis(X_test, predictions)
+
+    # Terrible accuracy
+    print(model.score(X_test, y_test))
+
+
+# Milestone 3
+# Attempting multiple output regression with k-fold cross validation
+def k_fold_multi_output_regression(X, y):
+    lr = LinearRegression()
+    X = np.reshape(X, (-1, 1))
+
+    model = lr.fit(X, y)
 
 
 if __name__ == "__main__":
